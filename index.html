@@ -39,6 +39,7 @@
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     html, body { margin: 0; height: 100%; }
     body {
       background: var(--bg);
@@ -86,6 +87,15 @@
     }
     .setup p { margin: 8px 0 12px; }
     .setup input { flex: 1; }
+
+    .welcome {
+      margin: 48px auto; padding: 0 16px; max-width: 520px;
+      display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center;
+    }
+    .welcome h2 { font-size: 22px; }
+    .welcome p { margin: 0; font-size: 14px; }
+    .logo.big { width: 64px; height: 44px; border-radius: 12px; font-size: 20px; }
+    .btn.big { padding: 12px 28px; font-size: 16px; }
 
     .status { margin: 12px 20px 0; padding: 10px 14px; border-radius: 8px; background: var(--info-bg); color: var(--info-text); }
     .status.error { background: var(--error-bg); color: var(--error-text); }
@@ -154,7 +164,6 @@
     <div class="account">
       <span id="accountName" class="muted"></span>
       <button id="settingsBtn" class="btn ghost">설정</button>
-      <button id="demoBtn" class="btn ghost">데모 데이터로 보기</button>
       <button id="signInBtn" class="btn primary">구글 계정으로 로그인</button>
       <button id="signOutBtn" class="btn ghost" hidden>로그아웃</button>
     </div>
@@ -174,6 +183,14 @@
   </section>
 
   <div id="status" class="status" hidden></div>
+
+  <section id="welcome" class="welcome">
+    <span class="logo big" aria-hidden="true">▶</span>
+    <h2>내 YouTube 플레이리스트를 엑셀로</h2>
+    <p class="muted">구글 계정으로 로그인하면 내 플레이리스트가 바로 보이고, 엑셀(.xlsx)이나 CSV로 저장할 수 있습니다.</p>
+    <button id="welcomeSignInBtn" class="btn primary big">구글 계정으로 로그인</button>
+    <button id="demoBtn" class="btn ghost">로그인 없이 데모로 보기</button>
+  </section>
 
   <main id="main" class="layout" hidden>
     <aside class="sidebar">
@@ -220,6 +237,9 @@
     const SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
     const API = 'https://www.googleapis.com/youtube/v3';
     const CLIENT_ID_KEY = 'ytpl.clientId';
+    // Google Cloud에서 만든 OAuth 클라이언트 ID. 비밀번호가 아니라서 코드에 넣어도 됩니다.
+    // 비워 두면 화면의 "설정"에서 직접 입력합니다.
+    const CLIENT_ID = '10761207057-qbdpc2hokm8bcjp7orlo8hu0vl2vrrtn.apps.googleusercontent.com';
 
     const state = {
       token: null,
@@ -235,6 +255,7 @@
 
     // ---------- 저장소 (막혀 있어도 동작하도록) ----------
     function loadClientId() {
+      if (CLIENT_ID) return CLIENT_ID;
       try { return localStorage.getItem(CLIENT_ID_KEY) || ''; } catch { return ''; }
     }
     function saveClientId(id) {
@@ -286,6 +307,7 @@
       $('#signInBtn').hidden = true;
       $('#signOutBtn').hidden = false;
       $('#setup').hidden = true;
+      $('#welcome').hidden = true;
       try {
         await loadPlaylists();
       } catch (e) {
@@ -303,6 +325,7 @@
       $('#signOutBtn').hidden = true;
       $('#accountName').textContent = '';
       $('#main').hidden = true;
+      $('#welcome').hidden = false;
       setStatus('로그아웃했습니다.');
     }
 
@@ -660,6 +683,7 @@
         state.items.set(pl.id, rows);
       }
       state.playlists = demo;
+      $('#welcome').hidden = true;
       $('#accountName').textContent = '데모 모드';
       setStatus('데모 데이터입니다. 실제 플레이리스트를 보려면 구글 계정으로 로그인하세요.');
       renderPlaylists();
@@ -670,7 +694,7 @@
     function init() {
       $('#originHint').textContent = location.origin;
       $('#clientIdInput').value = loadClientId();
-      if (!loadClientId()) $('#setup').hidden = false;
+      if (CLIENT_ID) $('#settingsBtn').hidden = true;
 
       $('#clientIdForm').addEventListener('submit', (ev) => {
         ev.preventDefault();
@@ -686,6 +710,7 @@
 
       $('#settingsBtn').addEventListener('click', () => { $('#setup').hidden = !$('#setup').hidden; });
       $('#signInBtn').addEventListener('click', signIn);
+      $('#welcomeSignInBtn').addEventListener('click', signIn);
       $('#signOutBtn').addEventListener('click', signOut);
       $('#demoBtn').addEventListener('click', loadDemo);
       $('#search').addEventListener('input', renderVideos);
