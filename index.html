@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>플레이리스트 추출기</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1b1d21;
+      --muted: #6b7280;
+      --border: #e3e6ea;
+      --accent: #e0262b;
+      --accent-text: #ffffff;
+      --hover: #f0f2f5;
+      --selected: #fdecec;
+      --error-bg: #fdecec;
+      --error-text: #a3161a;
+      --info-bg: #eef3fb;
+      --info-text: #1f3f73;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121316;
+        --panel: #1b1d21;
+        --text: #e8eaed;
+        --muted: #9aa0a6;
+        --border: #2c2f35;
+        --accent: #ff4e45;
+        --accent-text: #ffffff;
+        --hover: #24272c;
+        --selected: #3a1f20;
+        --error-bg: #3a1f20;
+        --error-text: #ffb4ab;
+        --info-bg: #1d2633;
+        --info-text: #b6ccf2;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+    h1 { font-size: 17px; margin: 0; }
+    h2 { font-size: 16px; margin: 0; }
+    code { background: var(--hover); padding: 1px 5px; border-radius: 4px; }
+    a { color: inherit; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .row { display: flex; gap: 8px; }
+
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .logo {
+      display: grid; place-items: center; width: 28px; height: 20px; border-radius: 6px;
+      background: var(--accent); color: var(--accent-text); font-size: 10px;
+    }
+    .account { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    .btn {
+      font: inherit; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+      border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    }
+    .btn:hover:not(:disabled) { background: var(--hover); }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+    .btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+    .btn.ghost { border-color: transparent; background: transparent; }
+
+    input[type=text], input[type=search] {
+      font: inherit; padding: 7px 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--panel); color: var(--text); min-width: 0;
+    }
+
+    .setup {
+      margin: 20px; padding: 18px 20px; background: var(--panel);
+      border: 1px solid var(--border); border-radius: 12px; max-width: 760px;
+    }
+    .setup p { margin: 8px 0 12px; }
+    .setup input { flex: 1; }
+
+    .status { margin: 12px 20px 0; padding: 10px 14px; border-radius: 8px; background: var(--info-bg); color: var(--info-text); }
+    .status.error { background: var(--error-bg); color: var(--error-text); }
+
+    .layout { flex: 1; display: flex; gap: 16px; padding: 16px 20px 20px; min-height: 0; }
+    .sidebar, .content {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .sidebar { width: 320px; flex-shrink: 0; }
+    .content { flex: 1; min-width: 0; }
+
+    .sidebar-head, .content-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 14px; border-bottom: 1px solid var(--border);
+    }
+    .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+
+    .playlist-list { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; }
+    .playlist-list li {
+      display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: pointer;
+    }
+    .playlist-list li:hover { background: var(--hover); }
+    .playlist-list li.active { background: var(--selected); }
+    .pl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pl-count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .badge { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+
+    .export { border-top: 1px solid var(--border); padding: 12px 14px; display: grid; gap: 8px; }
+    .export .btn { flex: 1; }
+
+    .content-head input { width: 240px; }
+    .table-wrap { overflow: auto; flex: 1; position: relative; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    th { position: sticky; top: 0; background: var(--panel); font-weight: 600; font-size: 12px; color: var(--muted); z-index: 1; }
+    td.num, th.num { width: 44px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    td.date, th.date { width: 110px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    td.thumb { width: 76px; }
+    td.thumb img { width: 64px; height: 36px; object-fit: cover; border-radius: 4px; display: block; background: var(--hover); }
+    td a { text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+    tr.unavailable td { color: var(--muted); font-style: italic; }
+    .empty { padding: 40px 20px; text-align: center; color: var(--muted); }
+
+    @media (max-width: 760px) {
+      .layout { flex-direction: column; padding: 12px 16px 16px; }
+      .sidebar { width: auto; max-height: 45vh; }
+      .content { min-height: 60vh; }
+      .content-head { flex-direction: column; align-items: stretch; }
+      .content-head input { width: 100%; }
+      td.thumb, th:nth-child(2), td:nth-child(4), th:nth-child(4) { display: none; }
+      .topbar { padding: 12px 16px; }
+      .setup { margin: 16px; }
+    }
+  </style>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">▶</span>
+      <h1>플레이리스트 추출기</h1>
+    </div>
+    <div class="account">
+      <span id="accountName" class="muted"></span>
+      <button id="settingsBtn" class="btn ghost">설정</button>
+      <button id="demoBtn" class="btn ghost">데모 데이터로 보기</button>
+      <button id="signInBtn" class="btn primary">구글 계정으로 로그인</button>
+      <button id="signOutBtn" class="btn ghost" hidden>로그아웃</button>
+    </div>
+  </header>
+
+  <section id="setup" class="setup" hidden>
+    <h2>처음 한 번만: OAuth 클라이언트 ID 입력</h2>
+    <p class="muted">
+      Google Cloud에서 만든 <b>웹 애플리케이션</b> 클라이언트 ID를 붙여넣으세요.
+      승인된 자바스크립트 원본은 <code id="originHint"></code> 이어야 합니다.
+      자세한 방법은 함께 있는 <code>README.md</code>를 참고하세요.
+    </p>
+    <form id="clientIdForm" class="row">
+      <input id="clientIdInput" type="text" placeholder="1234567890-abc...apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+      <button class="btn primary" type="submit">저장</button>
+    </form>
+  </section>
+
+  <div id="status" class="status" hidden></div>
+
+  <main id="main" class="layout" hidden>
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <label class="check">
+          <input type="checkbox" id="checkAll">
+          <span>전체 선택</span>
+        </label>
+        <span id="playlistCount" class="muted"></span>
+      </div>
+      <ul id="playlistList" class="playlist-list"></ul>
+      <div class="export">
+        <div id="selectedInfo" class="muted">내보낼 플레이리스트를 체크하세요</div>
+        <div class="row">
+          <button id="xlsxBtn" class="btn primary" disabled>엑셀로 저장</button>
+          <button id="csvBtn" class="btn" disabled>CSV로 저장</button>
+        </div>
+      </div>
+    </aside>
+
+    <section class="content">
+      <div class="content-head">
+        <div>
+          <h2 id="plTitle">플레이리스트를 선택하세요</h2>
+          <div id="plMeta" class="muted"></div>
+        </div>
+        <input id="search" type="search" placeholder="제목·채널 검색" disabled>
+      </div>
+      <div class="table-wrap">
+        <table id="videoTable">
+          <thead>
+            <tr><th class="num">#</th><th></th><th>제목</th><th>채널</th><th class="date">추가한 날짜</th></tr>
+          </thead>
+          <tbody id="videoBody"></tbody>
+        </table>
+        <div id="empty" class="empty">왼쪽에서 플레이리스트를 클릭하면 영상 목록이 여기에 표시됩니다.</div>
+      </div>
+    </section>
+  </main>
+  <script>
+    // YouTube 플레이리스트 추출기
+    // Google Identity Services로 액세스 토큰을 받고 YouTube Data API v3를 브라우저에서 직접 호출합니다.
+
+    const SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
+    const API = 'https://www.googleapis.com/youtube/v3';
+    const CLIENT_ID_KEY = 'ytpl.clientId';
+
+    const state = {
+      token: null,
+      tokenClient: null,
+      demo: false,
+      playlists: [],          // { id, title, count, privacy, thumb, special }
+      items: new Map(),       // playlistId -> rows
+      activeId: null,
+      checked: new Set(),
+    };
+
+    const $ = (sel) => document.querySelector(sel);
+
+    // ---------- 저장소 (막혀 있어도 동작하도록) ----------
+    function loadClientId() {
+      try { return localStorage.getItem(CLIENT_ID_KEY) || ''; } catch { return ''; }
+    }
+    function saveClientId(id) {
+      try { localStorage.setItem(CLIENT_ID_KEY, id); } catch { /* 무시 */ }
+    }
+
+    // ---------- 상태 메시지 ----------
+    function setStatus(msg, isError = false) {
+      const el = $('#status');
+      if (!msg) { el.hidden = true; return; }
+      el.hidden = false;
+      el.textContent = msg;
+      el.classList.toggle('error', isError);
+    }
+
+    // ---------- 로그인 ----------
+    function signIn() {
+      const clientId = loadClientId();
+      if (!clientId) {
+        $('#setup').hidden = false;
+        $('#clientIdInput').focus();
+        setStatus('먼저 OAuth 클라이언트 ID를 입력하세요.', true);
+        return;
+      }
+      if (!window.google?.accounts?.oauth2) {
+        setStatus('구글 로그인 스크립트를 아직 불러오지 못했습니다. 인터넷 연결을 확인하고 잠시 후 다시 시도하세요.', true);
+        return;
+      }
+      if (!state.tokenClient || state.tokenClient._clientId !== clientId) {
+        state.tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: SCOPE,
+          callback: onToken,
+          error_callback: (err) => setStatus(`로그인이 완료되지 않았습니다 (${err.type}). 팝업 차단을 확인하세요.`, true),
+        });
+        state.tokenClient._clientId = clientId;
+      }
+      state.tokenClient.requestAccessToken({ prompt: state.token ? '' : 'select_account' });
+    }
+
+    async function onToken(resp) {
+      if (resp.error) {
+        setStatus(`로그인 실패: ${resp.error_description || resp.error}`, true);
+        return;
+      }
+      state.token = resp.access_token;
+      state.demo = false;
+      resetData();
+      $('#signInBtn').hidden = true;
+      $('#signOutBtn').hidden = false;
+      $('#setup').hidden = true;
+      try {
+        await loadPlaylists();
+      } catch (e) {
+        handleApiError(e);
+      }
+    }
+
+    function signOut() {
+      if (state.token && window.google?.accounts?.oauth2) {
+        google.accounts.oauth2.revoke(state.token, () => {});
+      }
+      state.token = null;
+      resetData();
+      $('#signInBtn').hidden = false;
+      $('#signOutBtn').hidden = true;
+      $('#accountName').textContent = '';
+      $('#main').hidden = true;
+      setStatus('로그아웃했습니다.');
+    }
+
+    function resetData() {
+      state.playlists = [];
+      state.items.clear();
+      state.checked.clear();
+      state.activeId = null;
+    }
+
+    // ---------- API ----------
+    async function api(path, params) {
+      const url = new URL(API + path);
+      for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${state.token}` } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(data.error?.message || res.statusText);
+        err.status = res.status;
+        err.reason = data.error?.errors?.[0]?.reason;
+        throw err;
+      }
+      return data;
+    }
+
+    async function fetchAll(path, params, onPage) {
+      const out = [];
+      let pageToken = '';
+      do {
+        const data = await api(path, { ...params, maxResults: 50, ...(pageToken && { pageToken }) });
+        out.push(...(data.items || []));
+        onPage?.(out.length, data.pageInfo?.totalResults);
+        pageToken = data.nextPageToken || '';
+      } while (pageToken);
+      return out;
+    }
+
+    function handleApiError(e) {
+      console.error(e);
+      if (e.status === 401) {
+        state.token = null;
+        $('#signInBtn').hidden = false;
+        $('#signOutBtn').hidden = true;
+        setStatus('로그인이 만료되었습니다 (토큰은 1시간 유효). 다시 로그인하세요.', true);
+      } else if (e.reason === 'accessNotConfigured' || /has not been used|is disabled/.test(e.message)) {
+        setStatus('Google Cloud 프로젝트에서 "YouTube Data API v3"가 사용 설정되지 않았습니다. README의 2단계를 확인하세요.', true);
+      } else if (e.reason === 'quotaExceeded') {
+        setStatus('오늘의 API 할당량을 모두 사용했습니다. 내일 다시 시도하세요.', true);
+      } else {
+        setStatus(`오류: ${e.message}`, true);
+      }
+    }
+
+    // ---------- 데이터 불러오기 ----------
+    async function loadPlaylists() {
+      setStatus('플레이리스트를 불러오는 중…');
+      const [channels, lists] = await Promise.all([
+        api('/channels', { part: 'snippet,contentDetails', mine: 'true' }),
+        fetchAll('/playlists', { part: 'snippet,contentDetails,status', mine: 'true' }),
+      ]);
+      const channel = channels.items?.[0];
+      $('#accountName').textContent = channel ? channel.snippet.title : '';
+
+      state.playlists = lists.map((p) => ({
+        id: p.id,
+        title: p.snippet.title,
+        count: p.contentDetails?.itemCount ?? null,
+        privacy: p.status?.privacyStatus,
+        thumb: p.snippet.thumbnails?.default?.url,
+      }));
+
+      const likesId = channel?.contentDetails?.relatedPlaylists?.likes;
+      if (likesId) {
+        state.playlists.unshift({ id: likesId, title: '좋아요 표시한 동영상', count: null, privacy: 'private', special: true });
+      }
+
+      if (!channel) {
+        setStatus('이 구글 계정에는 YouTube 채널이 없어 플레이리스트를 가져올 수 없습니다.', true);
+      } else if (!state.playlists.length) {
+        setStatus('플레이리스트가 하나도 없습니다.');
+      } else {
+        setStatus('');
+      }
+      renderPlaylists();
+    }
+
+    function toRow(item, index, playlist) {
+      const s = item.snippet;
+      const videoId = item.contentDetails?.videoId || s.resourceId?.videoId || '';
+      const unavailable = s.title === 'Deleted video' || s.title === 'Private video' || !s.videoOwnerChannelTitle;
+      return {
+        playlist: playlist.title,
+        position: (s.position ?? index) + 1,
+        title: s.title,
+        channel: s.videoOwnerChannelTitle || '',
+        videoId,
+        url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : '',
+        addedAt: (s.publishedAt || '').slice(0, 10),
+        publishedAt: (item.contentDetails?.videoPublishedAt || '').slice(0, 10),
+        thumb: s.thumbnails?.default?.url || '',
+        unavailable,
+      };
+    }
+
+    async function loadItems(playlist, onProgress) {
+      if (state.items.has(playlist.id)) return state.items.get(playlist.id);
+      const raw = await fetchAll(
+        '/playlistItems',
+        { part: 'snippet,contentDetails', playlistId: playlist.id },
+        onProgress,
+      );
+      const rows = raw.map((it, i) => toRow(it, i, playlist));
+      state.items.set(playlist.id, rows);
+      if (playlist.count == null) {
+        playlist.count = rows.length;
+        renderPlaylists();
+      }
+      return rows;
+    }
+
+    // ---------- 화면 ----------
+    function renderPlaylists() {
+      $('#main').hidden = false;
+      const list = $('#playlistList');
+      list.replaceChildren();
+      for (const pl of state.playlists) {
+        const li = document.createElement('li');
+        li.classList.toggle('active', pl.id === state.activeId);
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = state.checked.has(pl.id);
+        cb.addEventListener('click', (ev) => ev.stopPropagation());
+        cb.addEventListener('change', () => {
+          cb.checked ? state.checked.add(pl.id) : state.checked.delete(pl.id);
+          updateExportState();
+        });
+
+        const name = document.createElement('span');
+        name.className = 'pl-name';
+        name.textContent = pl.title;
+        name.title = pl.title;
+
+        li.append(cb, name);
+        if (pl.privacy === 'private' && !pl.special) {
+          const b = document.createElement('span');
+          b.className = 'badge';
+          b.textContent = '비공개';
+          li.append(b);
+        }
+        const count = document.createElement('span');
+        count.className = 'pl-count';
+        count.textContent = pl.count == null ? '—' : pl.count.toLocaleString();
+        li.append(count);
+
+        li.addEventListener('click', () => selectPlaylist(pl.id));
+        list.append(li);
+      }
+      $('#playlistCount').textContent = `${state.playlists.length}개`;
+      updateExportState();
+    }
+
+    function updateExportState() {
+      const n = state.checked.size;
+      $('#selectedInfo').textContent = n ? `${n}개 플레이리스트 선택됨` : '내보낼 플레이리스트를 체크하세요';
+      $('#xlsxBtn').disabled = !n || !window.XLSX;
+      $('#csvBtn').disabled = !n;
+      const all = $('#checkAll');
+      all.checked = n > 0 && n === state.playlists.length;
+      all.indeterminate = n > 0 && n < state.playlists.length;
+    }
+
+    async function selectPlaylist(id) {
+      state.activeId = id;
+      renderPlaylists();
+      const pl = state.playlists.find((p) => p.id === id);
+      $('#plTitle').textContent = pl.title;
+      $('#plMeta').textContent = '불러오는 중…';
+      $('#videoBody').replaceChildren();
+      $('#empty').hidden = true;
+      $('#search').disabled = true;
+      try {
+        const rows = await loadItems(pl, (n, total) => {
+          if (state.activeId === id) $('#plMeta').textContent = `불러오는 중… ${n}${total ? ` / ${total}` : ''}`;
+        });
+        if (state.activeId !== id) return;
+        $('#plMeta').textContent = `영상 ${rows.length.toLocaleString()}개`;
+        $('#search').disabled = false;
+        renderVideos();
+      } catch (e) {
+        $('#plMeta').textContent = '';
+        handleApiError(e);
+      }
+    }
+
+    function renderVideos() {
+      const rows = state.items.get(state.activeId) || [];
+      const q = $('#search').value.trim().toLowerCase();
+      const shown = q ? rows.filter((r) => r.title.toLowerCase().includes(q) || r.channel.toLowerCase().includes(q)) : rows;
+
+      const body = $('#videoBody');
+      body.replaceChildren();
+      for (const r of shown) {
+        const tr = document.createElement('tr');
+        tr.classList.toggle('unavailable', r.unavailable);
+
+        const num = cell('num', r.position);
+        const thumb = cell('thumb');
+        if (r.thumb) {
+          const img = document.createElement('img');
+          img.src = r.thumb;
+          img.alt = '';
+          img.loading = 'lazy';
+          thumb.append(img);
+        }
+        const title = cell();
+        if (r.url && !r.unavailable) {
+          const a = document.createElement('a');
+          a.href = r.url;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.textContent = r.title;
+          title.append(a);
+        } else {
+          title.textContent = r.title;
+        }
+        tr.append(num, thumb, title, cell('', r.channel), cell('date', r.addedAt));
+        body.append(tr);
+      }
+      $('#empty').hidden = shown.length > 0;
+      $('#empty').textContent = rows.length ? '검색 결과가 없습니다.' : '이 플레이리스트에는 영상이 없습니다.';
+    }
+
+    function cell(cls = '', text = '') {
+      const td = document.createElement('td');
+      if (cls) td.className = cls;
+      td.textContent = text;
+      return td;
+    }
+
+    // ---------- 내보내기 ----------
+    const COLUMNS = [
+      ['플레이리스트', 'playlist', 28],
+      ['순서', 'position', 6],
+      ['제목', 'title', 56],
+      ['채널', 'channel', 24],
+      ['링크', 'url', 44],
+      ['추가한 날짜', 'addedAt', 12],
+      ['영상 게시일', 'publishedAt', 12],
+    ];
+
+    async function collectChecked() {
+      const selected = state.playlists.filter((p) => state.checked.has(p.id));
+      const result = [];
+      for (const [i, pl] of selected.entries()) {
+        setStatus(`가져오는 중 (${i + 1}/${selected.length}): ${pl.title}`);
+        result.push({ playlist: pl, rows: await loadItems(pl) });
+      }
+      setStatus('');
+      return result;
+    }
+
+    function sheetName(title, used) {
+      let base = title.replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 31).trim() || '플레이리스트';
+      let name = base;
+      for (let n = 2; used.has(name.toLowerCase()); n++) {
+        const suffix = ` (${n})`;
+        name = base.slice(0, 31 - suffix.length) + suffix;
+      }
+      used.add(name.toLowerCase());
+      return name;
+    }
+
+    function toSheet(rows) {
+      const aoa = [COLUMNS.map((c) => c[0]), ...rows.map((r) => COLUMNS.map((c) => r[c[1]]))];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = COLUMNS.map((c) => ({ wch: c[2] }));
+      ws['!autofilter'] = { ref: ws['!ref'] };
+      return ws;
+    }
+
+    function today() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    async function exportXlsx() {
+      await withBusy(async () => {
+        const data = await collectChecked();
+        const wb = XLSX.utils.book_new();
+        const used = new Set(['전체']);
+        XLSX.utils.book_append_sheet(wb, toSheet(data.flatMap((d) => d.rows)), '전체');
+        for (const { playlist, rows } of data) {
+          XLSX.utils.book_append_sheet(wb, toSheet(rows), sheetName(playlist.title, used));
+        }
+        XLSX.writeFile(wb, `youtube-playlists-${today()}.xlsx`);
+        setStatus(`엑셀 파일을 저장했습니다 (플레이리스트 ${data.length}개).`);
+      });
+    }
+
+    async function exportCsv() {
+      await withBusy(async () => {
+        const data = await collectChecked();
+        const esc = (v) => {
+          const s = String(v ?? '');
+          return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const lines = [COLUMNS.map((c) => c[0]).join(',')];
+        for (const r of data.flatMap((d) => d.rows)) lines.push(COLUMNS.map((c) => esc(r[c[1]])).join(','));
+        // BOM을 붙여야 엑셀에서 한글이 깨지지 않습니다.
+        const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `youtube-playlists-${today()}.csv`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        setStatus(`CSV 파일을 저장했습니다 (플레이리스트 ${data.length}개).`);
+      });
+    }
+
+    async function withBusy(fn) {
+      $('#xlsxBtn').disabled = true;
+      $('#csvBtn').disabled = true;
+      try {
+        await fn();
+      } catch (e) {
+        handleApiError(e);
+      } finally {
+        updateExportState();
+      }
+    }
+
+    // ---------- 데모 데이터 ----------
+    function loadDemo() {
+      state.demo = true;
+      resetData();
+      const make = (pl, titles) => titles.map(([title, channel], i) => ({
+        playlist: pl.title, position: i + 1, title, channel,
+        videoId: `demo${i}`, url: `https://www.youtube.com/watch?v=demo${i}`,
+        addedAt: `2026-0${(i % 9) + 1}-1${i % 10}`, publishedAt: `2025-1${i % 3}-0${(i % 9) + 1}`,
+        thumb: '', unavailable: title === 'Deleted video',
+      }));
+      const demo = [
+        { id: 'd1', title: '좋아요 표시한 동영상', special: true, privacy: 'private' },
+        { id: 'd2', title: '출근길 플레이리스트', privacy: 'public' },
+        { id: 'd3', title: '요리 레시피 모음', privacy: 'private' },
+      ];
+      const videos = {
+        d1: [['고양이가 박스를 좋아하는 이유', '동물탐구'], ['10분 홈트레이닝', '핏데이'], ['Deleted video', '']],
+        d2: [['Lo-fi beats to study to', 'Chill Room'], ['아침에 듣기 좋은 재즈', 'Jazz Cafe'], ['출근길 팝송 모음', 'Pop Mix']],
+        d3: [['초간단 김치볶음밥', '자취요리'], ['15분 파스타', '쿡쿡'], ['에어프라이어 감자', '자취요리'], ['계란말이 잘 마는 법', '집밥선생']],
+      };
+      for (const pl of demo) {
+        const rows = make(pl, videos[pl.id]);
+        pl.count = rows.length;
+        state.items.set(pl.id, rows);
+      }
+      state.playlists = demo;
+      $('#accountName').textContent = '데모 모드';
+      setStatus('데모 데이터입니다. 실제 플레이리스트를 보려면 구글 계정으로 로그인하세요.');
+      renderPlaylists();
+      selectPlaylist('d2');
+    }
+
+    // ---------- 시작 ----------
+    function init() {
+      $('#originHint').textContent = location.origin;
+      $('#clientIdInput').value = loadClientId();
+      if (!loadClientId()) $('#setup').hidden = false;
+
+      $('#clientIdForm').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        const id = $('#clientIdInput').value.trim();
+        if (!/\.apps\.googleusercontent\.com$/.test(id)) {
+          setStatus('클라이언트 ID는 ".apps.googleusercontent.com"으로 끝나야 합니다.', true);
+          return;
+        }
+        saveClientId(id);
+        $('#setup').hidden = true;
+        setStatus('클라이언트 ID를 저장했습니다. 이제 "구글 계정으로 로그인"을 누르세요.');
+      });
+
+      $('#settingsBtn').addEventListener('click', () => { $('#setup').hidden = !$('#setup').hidden; });
+      $('#signInBtn').addEventListener('click', signIn);
+      $('#signOutBtn').addEventListener('click', signOut);
+      $('#demoBtn').addEventListener('click', loadDemo);
+      $('#search').addEventListener('input', renderVideos);
+      $('#checkAll').addEventListener('change', (ev) => {
+        state.checked = ev.target.checked ? new Set(state.playlists.map((p) => p.id)) : new Set();
+        renderPlaylists();
+      });
+      $('#xlsxBtn').addEventListener('click', exportXlsx);
+      $('#csvBtn').addEventListener('click', exportCsv);
+
+      if (location.protocol === 'file:') {
+        setStatus('파일을 직접 열면 구글 로그인이 동작하지 않습니다. start.bat으로 실행한 뒤 http://localhost:8000 에서 여세요.', true);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
